@@ -1,0 +1,27 @@
+{
+  "name": "toolshop-playwright-typescript",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright + TypeScript Page Object Model test suite for Practice Software Testing Toolshop",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "test:register": "playwright test --no-deps --project=register tests/register.spec.ts",
+    "test:login": "playwright test --no-deps --project=login tests/login.spec.ts",
+    "test:buy": "playwright test --no-deps --project=buy-product tests/buy-product.spec.ts",
+    "test:compare": "playwright test --no-deps --project=compare-products tests/compare-products.spec.ts",
+    "test:reset": "playwright test --no-deps --project=reset-password tests/reset-password.spec.ts",
+    "report": "playwright show-report",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^22.15.30",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1"
+  }
+}
