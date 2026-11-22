@@ -14,6 +14,22 @@ export async function registerCustomerViaApi(
   request: APIRequestContext,
   user: RegistrationUser = createUniqueUser(),
 ): Promise<CustomerCredentials> {
+  // Use the site's own postcode lookup for the profile address. The checkout
+  // pre-fills the billing form from the profile and the invoice API rejects any
+  // address that differs from the lookup, so both must be the same address.
+  const lookup = await request.get(`${apiURL()}/postcode-lookup`, {
+    params: { country: user.countryCode, postcode: user.postalCode, house_number: user.houseNumber },
+  });
+  if (lookup.ok()) {
+    const found = await lookup.json() as { street?: string; city?: string; state?: string };
+    user = {
+      ...user,
+      street: found.street || user.street,
+      city: found.city || user.city,
+      state: found.state || user.state,
+    };
+  }
+
   const response = await request.post(`${apiURL()}/users/register`, {
     data: {
       first_name: user.firstName,
@@ -24,6 +40,7 @@ export async function registerCustomerViaApi(
       password: user.password,
       address: {
         street: user.street,
+        house_number: user.houseNumber,
         city: user.city,
         state: user.state,
         country: user.countryCode,

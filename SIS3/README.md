@@ -1,56 +1,81 @@
-# Practice Software Testing — Playwright + TypeScript
+# SIS 3 — CI Pipeline for Playwright
 
 [![Playwright Tests](https://github.com/MagzhanBigabatov/Software-testing-and-debugging/actions/workflows/playwright.yml/badge.svg?branch=main)](https://github.com/MagzhanBigabatov/Software-testing-and-debugging/actions/workflows/playwright.yml)
 
-A Page Object Model (POM) UI suite for [practicesoftwaretesting.com](https://practicesoftwaretesting.com), with tests for registration, login, purchase/checkout, product comparison, and password reset.
+SIS 3 extends the Playwright + TypeScript test suite developed for SIS 2 with a Continuous Integration pipeline using **GitHub Actions**. The tests target the public [Practice Software Testing Toolshop](https://practicesoftwaretesting.com) demo website.
 
-## Requirements
+The project is stored in the `SIS3/` subfolder of the repository. The GitHub Actions workflow is stored at the repository root in `.github/workflows/playwright.yml`.
 
-- Node.js 20 or newer recommended
+## 1. Test coverage
+
+The project contains five scenario files and six individual tests:
+
+| Scenario | Spec file | Coverage |
+| --- | --- | --- |
+| Registration | `tests/register.spec.ts` | Register a new customer with unique data |
+| Login | `tests/login.spec.ts` | Successful login and rejection of invalid credentials |
+| Purchase | `tests/buy-product.spec.ts` | Add a product to the cart and complete checkout |
+| Product comparison | `tests/compare-products.spec.ts` | Compare product names and prices |
+| Password reset | `tests/reset-password.spec.ts` | Check the response for a registered and an unknown email |
+
+The login scenario contains two tests, which is why five spec files contain six individual tests.
+
+## 2. Technologies and requirements
+
+- Node.js 22 (the workflow uses Node.js 22)
 - npm
-- Internet access to the public practice website
-- Visual Studio Code (recommended) with the official Playwright Test extension (optional)
+- Playwright Test
+- TypeScript
+- GitHub Actions
+- Chromium
 
-## Install and run
+The test suite targets a public website. Its content, stock availability and bot-protection behaviour can change independently of this repository.
+
+## 3. Install and run locally
+
+Run these commands from the `SIS3/` directory:
 
 ```bash
-npm install
+npm ci
 npx playwright install chromium
 ```
 
-Copy `.env.example` to `.env` and edit the credentials if the public demo account is changed. On Windows PowerShell:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Run the suite in the required order (registration → login → purchase → comparison → password reset):
+Run the full test suite:
 
 ```bash
 npm test
 ```
 
-The Playwright project dependency chain in `playwright.config.ts` enforces this order when running the full suite. If a dependency project fails, Playwright skips projects that depend on it; use the focused commands below while debugging a single case.
+Run the TypeScript check:
 
-Useful commands:
+```bash
+npm run typecheck
+```
+
+Other useful commands:
 
 ```bash
 npm run test:headed       # Run with a visible browser
-npm run test:debug        # Playwright Inspector / step debugging
-npm run test:ui           # Interactive Playwright UI
-npm run test:register     # Only registration test
-npm run test:login        # Only login tests
-npm run test:buy          # Purchase and checkout
-npm run test:compare      # Product comparison
-npm run test:reset        # Forgot-password flow
-npm run typecheck         # TypeScript type checking
-npm run report            # Open the HTML report after a test run
+npm run test:debug        # Open Playwright Inspector
+npm run test:ui           # Open Playwright UI
+npm run test:register     # Registration only
+npm run test:login        # Login tests only
+npm run test:buy          # Purchase and checkout only
+npm run test:compare      # Product comparison only
+npm run test:reset        # Password-reset scenario only
+npm run report            # Open the HTML report
 ```
 
-## Project structure
+The local Playwright configuration uses one worker and preserves the scenario order:
+
+`register → login → buy-product → compare-products → reset-password`
+
+The project dependencies enforce that order for a full local run. The focused commands use `--no-deps` so that an individual scenario can be debugged without running the preceding projects.
+
+## 4. Project structure
 
 ```text
-.
+SIS3/
 ├── data/
 │   ├── customer.api.ts
 │   └── user.factory.ts
@@ -71,80 +96,106 @@ npm run report            # Open the HTML report after a test run
 │   ├── compare-products.spec.ts
 │   └── reset-password.spec.ts
 ├── .env.example
+├── .gitignore
+├── AI-CI.md
+├── PROMPT.md
 ├── merge.config.ts
 ├── package.json
+├── package-lock.json
 ├── playwright.config.ts
 └── tsconfig.json
 ```
 
-## Design decisions
+## 5. Test design
 
-- **Page Object Model:** page interactions and selectors live in `pages/`. Spec files contain no locators.
-- **`data-test` selectors:** `playwright.config.ts` sets Playwright's `testIdAttribute` to `data-test`; the page objects use `getByTestId()` as a readable wrapper around those attributes.
-- **No fixed sleeps:** interactions use Playwright's auto-waiting and assertions use web-first `expect` methods.
-- **Unique registration data:** `createUniqueUser()` generates a unique email on every run. Registration and checkout select the country by the option value (ISO code) and wait for the site's postcode lookup response instead of guessing a localized country label.
-- **Live catalog IDs:** product cards use `data-test="product-<database-id>"`, not ordinal IDs such as `product-1`; the product page chooses cards by their shared `data-test` prefix. Purchase chooses the first in-stock card.
-- **Password-reset messages:** the current template renders reset feedback as a `role="alert"` inside the forgot-password form and doesn't assign the feedback element a dedicated `data-test`. The page object scopes its assertion to that form.
-- **A fresh account per test:** login, purchase and reset tests get their own customer from the `freshCustomer` fixture, which registers one through the site's REST API (`data/customer.api.ts`) before the test starts. The shared public demo account was dropped: other users lock it ("too many failed attempts") and the reset test could change its password, so tests that shared it could not run in parallel. The UI registration test still creates its own account through the form.
-- **Checkout address:** the API validates the billing address against the site's postcode lookup, so the checkout page object keeps the street/city/state that the lookup filled in and only fills empty fields with test data.
-- **Checkout payment:** the purchase test uses the site's Cash on Delivery demo option; it does not use a real payment card.
+- **Page Object Model:** locators and page interactions are kept in `pages/`; spec files describe scenarios and assertions.
+- **Test IDs:** Playwright is configured to use `data-test` as its test ID attribute.
+- **No fixed sleeps:** the tests use Playwright auto-waiting and web-first assertions instead of `waitForTimeout`.
+- **Unique customer data:** `createUniqueUser()` generates a different email and a short random password for each new account.
+- **Independent authenticated tests:** the `freshCustomer` fixture registers a customer through `data/customer.api.ts` for tests that need a signed-in account. This avoids relying on a shared public demo account that can be locked or have its password changed.
+- **Checkout address:** the checkout flow preserves the street, city and state returned by the site's postcode lookup because the invoice endpoint validates the billing address.
+- **Product availability:** the purchase flow checks whether the selected product can actually be added to the cart and tries another catalogue item when the selected product is out of stock.
+- **Payment:** the purchase scenario uses the demo Cash on Delivery option; it does not use a real payment card.
 
-## Environment variables
+## 6. Continuous Integration
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `BASE_URL` | `https://practicesoftwaretesting.com` | Base URL for the UI under test |
-| `API_URL` | `https://api.practicesoftwaretesting.com` | REST API used to register a fresh customer for each test |
-| `CI` | unset | Set automatically by GitHub Actions; switches on the CI settings below |
+**CI platform: GitHub Actions.** The repository is already hosted on GitHub, so Actions can run on pushes and pull requests without a separately managed CI server. It also provides matrix jobs, artefact storage and status reporting on the repository.
 
-## Debugging in VS Code
+Workflow file:
 
-Open this folder in Visual Studio Code, install dependencies, then use **Run and Debug** with the `Playwright: Debug Current Test File` launch configuration or run `npm run test:debug` in the integrated terminal. Screenshots, videos, and traces for failed tests are written to `test-results/`; the HTML report is written to `playwright-report/`.
+```text
+.github/workflows/playwright.yml
+```
 
-## Notes / assumptions
+The workflow is at the **repository root**, not inside `SIS3/`. Its run steps use `working-directory: SIS3`, and the npm cache uses `SIS3/package-lock.json`.
 
-This repository targets the live public demo, which can change independently of this suite. The selectors and flows were aligned to the current published Angular template source and the browser snapshots in the supplied failure logs. The browser suite could not be executed from this build environment, so run `npm test` locally to validate against the live demo. The implementation centralizes selectors in Page Objects; if the public site changes a `data-test` value or checkout button, update the corresponding file under `pages/` rather than editing a spec. The password-reset negative case assumes the app distinguishes an unknown email from a known email, as requested.
+### Pipeline stages
 
-## CI
+1. **Trigger:** run on every push and pull request. A manual `workflow_dispatch` run is also available.
+2. **Setup:** check out the repository, set up Node.js 22 with npm caching, run `npm ci` and install Chromium with system dependencies.
+3. **Test:** run the full Playwright suite without `--grep` or `--project` filters. The default workflow uses four parallel shards. The manual run can select one or four shards for timing comparison.
+4. **Upload:** upload per-shard test results and debugging artefacts.
+5. **Merge:** download the blob reports and use `merge.config.ts` to generate one HTML report and one merged JUnit file.
 
-[![Playwright Tests](https://github.com/MagzhanBigabatov/Software-testing-and-debugging/actions/workflows/playwright.yml/badge.svg?branch=main)](https://github.com/MagzhanBigabatov/Software-testing-and-debugging/actions/workflows/playwright.yml)
+### CI-specific Playwright settings
 
-**CI system: GitHub Actions.** The repository already lives on GitHub, so Actions needs no server or extra account, is free for a public repository, shows runs right next to commits and pull requests, and supports a job matrix for sharding out of the box.
+When `process.env.CI` is set, `playwright.config.ts` enables:
 
-> The repository root is `Software-testing-and-debugging/`; this project is the `SIS3/` subfolder. GitHub only reads workflows from the root, so the file is `.github/workflows/playwright.yml` in the repository root and every step runs with `working-directory: SIS3`.
+- `forbidOnly: true` to prevent an accidental `test.only`;
+- `retries: 2` for retrying unstable tests;
+- `fullyParallel: true` and two workers per shard;
+- `list`, `blob` and `junit` reporters;
+- `trace: 'on-first-retry'`;
+- independent projects without the local dependency chain, so sharding can distribute tests across jobs.
 
-### Pipeline (`.github/workflows/playwright.yml`)
+Without CI mode, the local ordered project chain, one worker and HTML reporting are retained.
 
-| Requirement | How it is done |
-| --- | --- |
-| Runs on every push and PR | `on: push` and `on: pull_request` without branch filters (+ `workflow_dispatch` for manual timing runs) |
-| Cached deps, browsers, full suite | `actions/setup-node` with `cache: npm`, `npm ci`, `npx playwright install --with-deps chromium`, `npx playwright test --shard=i/N` with no `--grep` / `--project` filters |
-| Report and traces as artefacts | `playwright-report` (merged HTML), `test-results-1…4` (traces, screenshots, videos, per-shard JUnit), `junit-report` (merged JUnit); `retention-days: 14`; uploaded with `if: !cancelled()` so they exist when tests fail |
-| CI-specific config | `playwright.config.ts` when `CI=true`: `forbidOnly: true`, `retries: 2`, reporters `list` + `blob` + `junit` (`reports/junit.xml`), `trace: 'on-first-retry'`, `fullyParallel: true`, `workers: 2` |
-| Parallelism | 4-shard matrix (`fail-fast: false`) + a `merge-reports` job that runs `npx playwright merge-reports --config merge.config.ts` |
-| Status badge | badge for `main` at the top of this README |
+### Reports and artefacts
 
-Other details:
+The workflow stores the final HTML report, merged JUnit report and per-shard test results. Test results can include traces, screenshots and videos when generated by the configured Playwright settings.
 
-- `concurrency` cancels an outdated run when a new commit is pushed to the same branch.
-- Optional repository variables (Settings → Secrets and variables → Actions → Variables): `BASE_URL`, `API_URL`. If they are not set, the defaults from `playwright.config.ts` / `data/customer.api.ts` are used. No passwords are needed: each test registers its own account.
-- Locally the suite still runs in the original order (register → login → buy → compare → reset) through project dependencies. In CI the dependencies are removed so that `--shard` can spread tests over jobs; this is safe because no test uses data created by another test.
-- To open a trace: download `test-results-N`, then `npx playwright show-trace <path>/trace.zip` or drop the file on <https://trace.playwright.dev>.
+The final report artefacts are configured for 14-day retention. Intermediate blob reports are used by the merge job.
 
-### Runtime: before / after
+To inspect a trace, download the relevant test-results artefact and run:
 
-"Before" = the same workflow with 1 shard, "after" = 4 shards. Both are measured on GitHub Actions: **Actions → Playwright Tests → Run workflow**, choose `shards = 1` or `shards = 4`, run each variant 3 times and take the median.
+```bash
+npx playwright show-trace path/to/trace.zip
+```
 
-| Configuration | Total run time | Run Playwright tests step (slowest shard) | Run |
+Alternatively, open <https://trace.playwright.dev> and drop the trace ZIP there.
+
+### Manual runs and traces
+
+Open **Actions → Playwright Tests → Run workflow**.
+
+Use the `shards` input to run the workflow with one shard (before comparison) or four shards (after comparison). The manual `trace` input can be enabled when a trace is needed for debugging. The exact inputs are defined in `.github/workflows/playwright.yml`.
+
+## 7. Runtime comparison
+
+The assignment asks for a comparison between one shard and four shards. The values must be collected from GitHub Actions, because local timings do not include GitHub runner setup, dependency installation, browser installation or report merging.
+
+Run each configuration three times and use the median. Record the total workflow duration and the duration of the slowest **Run Playwright tests** step.
+
+| Configuration | Median total workflow time | Median test-step time (slowest shard) | Run links |
 | --- | --- | --- | --- |
-| 1 job, no sharding | _TODO_ | _TODO_ | [run](_TODO_) |
-| 4 shards + merge | _TODO_ | _TODO_ | [run](_TODO_) |
+| 1 job, no sharding | _TODO_ | _TODO_ | _TODO_ |
+| 4 shards + merge | _TODO_ | _TODO_ | _TODO_ |
 
-Conclusion: _TODO after the runs._ Expected outcome: the suite has only 6 tests (≈ 30 s of test time), while every shard spends roughly a minute on checkout, `npm ci` and browser install, and the merge job adds its own setup. So the test step gets shorter with 4 shards, but the total wall-clock time drops only slightly or not at all; sharding pays off once the suite is much larger.
+**Conclusion:** _Add after collecting the GitHub Actions measurements._
 
-Local reference (Windows laptop, not used in the table): the full suite in local mode (serial, 1 worker) took ≈ 31 s; the 4 CI shards run one after another took ≈ 24 s of test time in total (5 + 9 + 5 + 5 s).
+A local timing is not a substitute for this table. The suite contains only six tests, while each shard also spends time checking out the repository, installing packages and setting up Chromium. Because of this fixed overhead, four shards may reduce test execution time without reducing total workflow time by the same amount.
 
-### Running the CI configuration locally
+## 8. Cloudflare behaviour on GitHub runners
+
+The target is a public demo site behind Cloudflare. GitHub-hosted runners sometimes receive a security-verification page instead of the shop. This is an external site restriction, not a test assertion.
+
+The purchase flow was adjusted to avoid an unnecessary page reload after login: it adds the product as a guest and signs in at the checkout step. The implementation does not use stealth plugins, spoofed browser fingerprints or captcha-solving logic.
+
+If Cloudflare blocks a run, inspect the screenshot and trace in the corresponding test-results artefact. A skipped test with the documented `blocked-by-cloudflare` annotation means the runner was blocked by the site; it should not be described as a successful checkout.
+
+## 9. Run the CI configuration locally
+
+From the `SIS3/` directory:
 
 ```bash
 npm ci
@@ -152,19 +203,32 @@ npx playwright install --with-deps chromium
 CI=true npx playwright test
 ```
 
-PowerShell:
+In PowerShell:
 
 ```powershell
-$env:CI = "true"; npx playwright test; Remove-Item Env:CI
+$env:CI = "true"
+npx playwright test
+Remove-Item Env:CI
 ```
 
-Shards and the report merge, as in CI (bash / Git Bash):
+To run the four shards sequentially and merge the reports in Bash or Git Bash:
 
 ```bash
 mkdir -p all-blob-reports
-for i in 1 2 3 4; do CI=true npx playwright test --shard=$i/4 && cp blob-report/*.zip all-blob-reports/; done
+
+for i in 1 2 3 4; do
+  CI=true npx playwright test --shard=$i/4
+  cp blob-report/*.zip all-blob-reports/
+done
+
 npx playwright merge-reports --config merge.config.ts ./all-blob-reports
 npx playwright show-report
 ```
 
-Checked locally: all 6 tests pass in each mode; the merged report and `reports/junit-merged.xml` contain all 6 tests; a temporary `test.only` makes the `CI=true` run fail with the forbidden-`.only` error.
+For this local merge check, each shard's blob ZIP must be copied to the shared folder before the next shard overwrites `blob-report/`.
+
+## 10. AI assistance
+
+Claude Code (Claude Opus 5.5) was used as a development assistant for selected CI configuration, test-support changes and troubleshooting. The existing SIS 2 Playwright project was the starting point; the SIS 3 implementation was reviewed and tested against the assignment requirements and the public demo site.
+
+See AI-CI.md for the work notes and verification record, and PROMPT.md for the main working brief and follow-up topics.
