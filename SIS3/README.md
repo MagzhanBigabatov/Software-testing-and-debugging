@@ -86,7 +86,8 @@ npm run report            # Open the HTML report after a test run
 - **Live catalog IDs:** product cards use `data-test="product-<database-id>"`, not ordinal IDs such as `product-1`; the product page chooses cards by their shared `data-test` prefix. Purchase chooses the first in-stock card.
 - **Password-reset messages:** the current template renders reset feedback as a `role="alert"` inside the forgot-password form and doesn't assign the feedback element a dedicated `data-test`. The page object scopes its assertion to that form.
 - **A fresh account per test:** login, purchase and reset tests get their own customer from the `freshCustomer` fixture, which registers one through the site's REST API (`data/customer.api.ts`) before the test starts. The shared public demo account was dropped: other users lock it ("too many failed attempts") and the reset test could change its password, so tests that shared it could not run in parallel. The UI registration test still creates its own account through the form.
-- **Checkout address:** the API validates the billing address against the site's postcode lookup, so the checkout page object keeps the street/city/state that the lookup filled in and only fills empty fields with test data.
+- **Checkout address:** the invoice API only accepts the address returned by the site's postcode lookup. The checkout page object waits until the (debounced, sometimes repeated) lookup requests have settled, never types its own street/city/state, and re-types only the house number if a late lookup cleared it. Customers registered through the API get the lookup address in their profile, because checkout pre-fills the billing form from the profile.
+- **Purchase flow like a real shopper:** `buy-product` picks the product as a guest and signs in on the checkout's "Sign in" step, so the whole purchase happens inside the single-page app without reloading pages after login.
 - **Checkout payment:** the purchase test uses the site's Cash on Delivery demo option; it does not use a real payment card.
 
 ## Environment variables
@@ -135,14 +136,16 @@ Other details:
 
 The public demo site is behind Cloudflare. From a home connection it opens normally, but GitHub-hosted runners use data-centre IPs, and Cloudflare sometimes answers a page load with **"Performing security verification / Verify you are human"** instead of the shop. This happened in the first runs: `buy-product` failed in shard 2 because the home page was the Cloudflare check (see the screenshot in the `test-results-2` artefact), while the same test passes locally.
 
-How the suite handles it (`pages/base.page.ts`, `navigate()`):
+**Fix 1, the real one: fewer full page loads.** The check was triggered by reloading the home page right after login. `buy-product` now adds the product to the cart as a guest and signs in on the checkout's "Sign in" step, so after the first page load everything happens through clicks inside the single-page app, like a real shopper. Nothing about the browser is disguised. After this change all 6 tests pass on GitHub (shard 2 test step: 13 s, compared with 20–22 s when the test was skipped).
+
+**Fix 2, a safety net in case Cloudflare blocks some other page load** (`pages/base.page.ts`, `navigate()`):
 
 - after each page load it looks for the Cloudflare check and waits up to 15 s in case it clears by itself;
 - if it does not clear, the test is **skipped** with the reason *"Blocked by the site's Cloudflare bot check…"* and an annotation `blocked-by-cloudflare`, visible in the HTML report and the JUnit file;
 - the check is **not bypassed**: no stealth plugins, no fake user agent, no captcha solving;
 - every other error still fails the test and the run.
 
-So a CI run can end as e.g. *5 passed, 1 skipped*. That means the site blocked the runner, not a bug in the shop or in the tests. The proper long-term fix is to run the open-source Toolshop app inside the pipeline (Docker) and test against `localhost`, which removes both Cloudflare and the shared public data.
+If that ever happens, a run ends as e.g. *5 passed, 1 skipped*. That means the site blocked the runner, not a bug in the shop or in the tests. The proper long-term fix is to run the open-source Toolshop app inside the pipeline (Docker) and test against `localhost`, which removes both Cloudflare and the shared public data.
 
 ### Runtime: before / after
 
