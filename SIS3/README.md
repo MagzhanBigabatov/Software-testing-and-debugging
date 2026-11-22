@@ -170,18 +170,32 @@ Open **Actions → Playwright Tests → Run workflow**.
 
 Use the `shards` input to run the workflow with one shard (before comparison) or four shards (after comparison). The manual `trace` input can be enabled when a trace is needed for debugging. The exact inputs are defined in `.github/workflows/playwright.yml`.
 
+### Verified GitHub Actions run
+
+The following run confirms that the four-shard pipeline and report-merging job completed successfully:
+
+| Date | Configuration | Run | Commit | Result | Total duration |
+| --- | --- | --- | --- | --- | --- |
+| 22 Nov 2026 | 4 shards + merge | [Updated SIS3 #13](https://github.com/MagzhanBigabatov/Software-testing-and-debugging/actions/runs/45040807912) | `bc2cf68` | Success | **1 min 19 sec** |
+
+In this run, all four test-shard jobs completed successfully, followed by the `Merge reports` job (17 seconds). GitHub Actions produced 10 artefacts: four blob reports, four per-shard test-results artefacts, the merged HTML report and the merged JUnit report.
+
+The run also displayed five Node.js 20 deprecation warnings for the `actions/checkout@v4`, `actions/setup-node@v4`, `actions/upload-artifact@v4` and `actions/download-artifact@v4` actions. These warnings did not fail the run, but the workflow actions should be reviewed and updated to versions compatible with the runner's current Node.js runtime.
+
 ## 7. Runtime comparison
 
 The assignment asks for a comparison between one shard and four shards. The values must be collected from GitHub Actions, because local timings do not include GitHub runner setup, dependency installation, browser installation or report merging.
 
 Run each configuration three times and use the median. Record the total workflow duration and the duration of the slowest **Run Playwright tests** step.
 
+Run #13 above is one successful four-shard run. It provides the total workflow duration, but it does not by itself provide the three measurements needed to calculate the median. Two more four-shard runs and three one-shard runs are still required.
+
 | Configuration | Median total workflow time | Median test-step time (slowest shard) | Run links |
 | --- | --- | --- | --- |
 | 1 job, no sharding | _TODO_ | _TODO_ | _TODO_ |
-| 4 shards + merge | _TODO_ | _TODO_ | _TODO_ |
+| 4 shards + merge | _TODO_ | _TODO_ | [Run #13](https://github.com/MagzhanBigabatov/Software-testing-and-debugging/actions/runs/45040807912) + 2 more runs needed |
 
-**Conclusion:** _Add after collecting the GitHub Actions measurements._
+**Conclusion:** _Add after collecting all six GitHub Actions measurements._
 
 A local timing is not a substitute for this table. The suite contains only six tests, while each shard also spends time checking out the repository, installing packages and setting up Chromium. Because of this fixed overhead, four shards may reduce test execution time without reducing total workflow time by the same amount.
 
