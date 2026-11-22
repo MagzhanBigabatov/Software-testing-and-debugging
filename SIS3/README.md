@@ -117,7 +117,7 @@ This repository targets the live public demo, which can change independently of 
 
 | Requirement | How it is done |
 | --- | --- |
-| Runs on every push and PR | `on: push` and `on: pull_request` without branch filters (+ `workflow_dispatch` for manual timing runs) |
+| Runs on every push and PR | `on: push` and `on: pull_request` without branch filters (+ `workflow_dispatch` with `shards` and `trace` inputs for manual runs) |
 | Cached deps, browsers, full suite | `actions/setup-node` with `cache: npm`, `npm ci`, `npx playwright install --with-deps chromium`, `npx playwright test --shard=i/N` with no `--grep` / `--project` filters |
 | Report and traces as artefacts | `playwright-report` (merged HTML), `test-results-1…4` (traces, screenshots, videos, per-shard JUnit), `junit-report` (merged JUnit); `retention-days: 14`; uploaded with `if: !cancelled()` so they exist when tests fail |
 | CI-specific config | `playwright.config.ts` when `CI=true`: `forbidOnly: true`, `retries: 2`, reporters `list` + `blob` + `junit` (`reports/junit.xml`), `trace: 'on-first-retry'`, `fullyParallel: true`, `workers: 2` |
@@ -129,7 +129,7 @@ Other details:
 - `concurrency` cancels an outdated run when a new commit is pushed to the same branch.
 - Optional repository variables (Settings → Secrets and variables → Actions → Variables): `BASE_URL`, `API_URL`. If they are not set, the defaults from `playwright.config.ts` / `data/customer.api.ts` are used. No passwords are needed: each test registers its own account.
 - Locally the suite still runs in the original order (register → login → buy → compare → reset) through project dependencies. In CI the dependencies are removed so that `--shard` can spread tests over jobs; this is safe because no test uses data created by another test.
-- To open a trace: download `test-results-N`, then `npx playwright show-trace <path>/trace.zip` or drop the file on <https://trace.playwright.dev>.
+- Traces: in CI a trace is recorded on the first retry (`trace: 'on-first-retry'`), so a fully green run has none. To get one on demand: **Actions → Playwright Tests → Run workflow**, tick **trace** (adds `--trace=on`). To open it: download `test-results-N`, then `npx playwright show-trace <path>/trace.zip` or drop the file on <https://trace.playwright.dev>; traces are also embedded in the `playwright-report` HTML.
 
 ### Runtime: before / after
 
