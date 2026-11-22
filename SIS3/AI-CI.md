@@ -44,6 +44,8 @@ Questions the AI asked, and my answers:
 3. **"Password length is invalid" on the login form.** The generated password was 42 characters. The API accepted it, but the UI form rejects it. Fix: shorter random password.
 4. **Checkout failed with HTTP 422.** `POST /invoices` returned *"The billing_country does not match the entered address. The city does not belong to the selected country."* The page object was overwriting the lookup address (for postcode 90001 the site returns its own street, city and state) with "Los Angeles / California". Checked directly against the API: the lookup address is accepted, the overwritten one is rejected. Fix: keep the lookup values and fill a field from test data only if it is empty.
 
+5. **Cloudflare bot check on GitHub runners.** The first GitHub runs went red: `buy-product` in shard 2 failed in all 3 attempts. The screenshot from the run's artefact showed Cloudflare's "Performing security verification / Verify you are human" page instead of the shop. Locally the test passes, because Cloudflare treats a home IP and a data-centre IP differently. The AI explicitly refused to bypass the check (stealth plugins, a fake browser fingerprint or captcha solving would mean evading another site's bot protection). Two options were proposed: (1) detect the check and skip the test with a clear reason, or (2) run the Toolshop app in Docker inside CI. Option 1 was chosen because of the deadline. `BasePage.navigate()` now waits up to 15 s for the check to clear and otherwise marks the test as skipped with the annotation `blocked-by-cloudflare`. Verified with a fake challenge page served via `page.route` (result: skipped) and a full real run (6 / 6 passed).
+
 ## 4. Verification (local, Windows, Node 22, Playwright 1.64.1)
 
 | Check | Result |
@@ -64,4 +66,4 @@ The AI cannot produce these, because they only exist after a push:
 - Check the artefacts: `playwright-report`, `test-results-1…4`, `junit-report`. Open a trace on trace.playwright.dev.
 - Run the manual workflow with `shards = 1` and `shards = 4` (3 times each) and fill in the README timing table and conclusion.
 - Merge the PR. The badge on `main` then shows a status.
-- Note: GitHub runners use cloud IPs, and the live site sits behind Cloudflare. If CI is blocked by the site while local runs pass, that is the reason.
+- The first push went to `main` by mistake, so the feature-branch and PR runs were made with a separate branch `SIS3` (on-demand trace input + root README).

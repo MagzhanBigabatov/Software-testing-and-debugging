@@ -131,6 +131,19 @@ Other details:
 - Locally the suite still runs in the original order (register → login → buy → compare → reset) through project dependencies. In CI the dependencies are removed so that `--shard` can spread tests over jobs; this is safe because no test uses data created by another test.
 - Traces: in CI a trace is recorded on the first retry (`trace: 'on-first-retry'`), so a fully green run has none. To get one on demand: **Actions → Playwright Tests → Run workflow**, tick **trace** (adds `--trace=on`). To open it: download `test-results-N`, then `npx playwright show-trace <path>/trace.zip` or drop the file on <https://trace.playwright.dev>; traces are also embedded in the `playwright-report` HTML.
 
+### Cloudflare bot check on GitHub runners
+
+The public demo site is behind Cloudflare. From a home connection it opens normally, but GitHub-hosted runners use data-centre IPs, and Cloudflare sometimes answers a page load with **"Performing security verification / Verify you are human"** instead of the shop. This happened in the first runs: `buy-product` failed in shard 2 because the home page was the Cloudflare check (see the screenshot in the `test-results-2` artefact), while the same test passes locally.
+
+How the suite handles it (`pages/base.page.ts`, `navigate()`):
+
+- after each page load it looks for the Cloudflare check and waits up to 15 s in case it clears by itself;
+- if it does not clear, the test is **skipped** with the reason *"Blocked by the site's Cloudflare bot check…"* and an annotation `blocked-by-cloudflare`, visible in the HTML report and the JUnit file;
+- the check is **not bypassed**: no stealth plugins, no fake user agent, no captcha solving;
+- every other error still fails the test and the run.
+
+So a CI run can end as e.g. *5 passed, 1 skipped*. That means the site blocked the runner, not a bug in the shop or in the tests. The proper long-term fix is to run the open-source Toolshop app inside the pipeline (Docker) and test against `localhost`, which removes both Cloudflare and the shared public data.
+
 ### Runtime: before / after
 
 "Before" = the same workflow with 1 shard, "after" = 4 shards. Both are measured on GitHub Actions: **Actions → Playwright Tests → Run workflow**, choose `shards = 1` or `shards = 4`, run each variant 3 times and take the median.
