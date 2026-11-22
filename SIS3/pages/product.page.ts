@@ -35,7 +35,7 @@ export class ProductPage extends BasePage {
       throw new Error(`Product index must be a positive integer, received: ${index}`);
     }
 
-    await this.page.goto('/');
+    await this.navigate('/');
     const productCards = this.catalogProductCards();
     const card = productCards.nth(index - 1);
     await expect(card).toBeVisible();
@@ -45,7 +45,7 @@ export class ProductPage extends BasePage {
 
   /** Select the first in-stock catalog card; useful for a purchase flow. */
   async openFirstAvailableCatalogProduct(): Promise<void> {
-    await this.page.goto('/');
+    await this.navigate('/');
     const productCards = this.catalogProductCards();
     await expect(productCards.first()).toBeVisible();
 

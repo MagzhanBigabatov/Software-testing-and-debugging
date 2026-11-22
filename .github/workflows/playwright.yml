@@ -13,6 +13,10 @@ on:
         type: choice
         options: ['4', '1']
         default: '4'
+      trace:
+        description: 'Record a trace for every test (--trace=on), even when all tests pass'
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -51,7 +55,10 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run Playwright tests
-        run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        # No --grep / --project filters: the full suite is split across shards.
+        # --trace=on only for a manual run with the "trace" box ticked; otherwise
+        # the config's trace: 'on-first-retry' applies.
+        run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }} ${{ inputs.trace && '--trace=on' || '' }}
         env:
           BASE_URL: ${{ vars.BASE_URL }}
           API_URL: ${{ vars.API_URL }}
