@@ -50,6 +50,7 @@ Questions the AI asked, and my answers:
    - this exposed a race in the billing form: `/postcode-lookup` is debounced and sometimes sent twice, and a late response clears the house number. The page object now tracks lookup requests and continues only when they have settled (no fixed sleeps);
    - a second, rarer failure was the invoice API returning 422 because checkout pre-filled the profile address ("Los Angeles") over the lookup address. API-registered customers now get the lookup address in their profile.
    Verified: `buy-product` 15/15 with `--repeat-each=15`, full suite green locally and in CI mode, and on GitHub all 4 shards are green with shard 2's test step down to 13 s (a real pass, no skip).
+7. **"Add to cart" disabled on the PR run.** The first product in the catalog had sold out on the shared demo. Every successful run buys a product, including the 15 repeated local runs, so our own tests helped empty that stock. The catalog card did not show the out-of-stock badge yet, but the product page had the button disabled. `openFirstAvailableCatalogProduct()` now treats the product page as the source of truth: if "Add to cart" stays disabled, it goes back (SPA history) and tries the next card. Verified with a mocked API response that marks the first product as out of stock: the test moved on to the next product. Lesson: repeated runs against a shared live site change its data, so tests must not depend on one specific product.
 
 ## 4. Verification (local, Windows, Node 22, Playwright 1.64.1)
 

@@ -43,7 +43,13 @@ export class ProductPage extends BasePage {
     await this.expectProductDetailsVisible();
   }
 
-  /** Select the first in-stock catalog card; useful for a purchase flow. */
+  /**
+   * Open the first product that can really be added to the cart. Stock on the
+   * shared public demo changes all the time (other users and earlier runs buy
+   * products), so the catalog's out-of-stock badge can be stale. The source of
+   * truth is the product page: if "Add to cart" stays disabled, go back and try
+   * the next card. Going back uses the SPA history, not a full page reload.
+   */
   async openFirstAvailableCatalogProduct(): Promise<void> {
     await this.navigate('/');
     const productCards = this.catalogProductCards();
@@ -52,15 +58,31 @@ export class ProductPage extends BasePage {
     const cardCount = await productCards.count();
     for (let index = 0; index < cardCount; index += 1) {
       const card = productCards.nth(index);
-      const outOfStockBadge = card.getByTestId('out-of-stock');
-      if (await outOfStockBadge.count() === 0) {
-        await card.click();
-        await this.expectProductDetailsVisible();
+      if (await card.getByTestId('out-of-stock').count() > 0) {
+        continue;
+      }
+
+      await card.click();
+      await this.expectProductDetailsVisible();
+      if (await this.isAddToCartEnabled()) {
         return;
       }
+
+      await this.page.goBack();
+      await expect(productCards.first()).toBeVisible();
     }
 
-    throw new Error('No in-stock products were found on the first catalog page.');
+    throw new Error('No product on the first catalog page can be added to the cart.');
+  }
+
+  private async isAddToCartEnabled(): Promise<boolean> {
+    try {
+      // Short wait: the button may be disabled for a moment while the page loads.
+      await expect(this.addToCartButton).toBeEnabled({ timeout: 3_000 });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private catalogProductCards(): Locator {
