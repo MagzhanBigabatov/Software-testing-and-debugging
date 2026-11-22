@@ -1,9 +1,12 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { BasePage } from './base.page';
-import type { BillingAddress } from '../data/user.factory';
+import type { BillingAddress, CustomerCredentials } from '../data/user.factory';
 
 export class CheckoutPage extends BasePage {
   private readonly continueFromLoginButton: Locator;
+  private readonly signInEmailInput: Locator;
+  private readonly signInPasswordInput: Locator;
+  private readonly signInSubmitButton: Locator;
   private readonly streetInput: Locator;
   private readonly postalCodeInput: Locator;
   private readonly houseNumberInput: Locator;
@@ -20,6 +23,10 @@ export class CheckoutPage extends BasePage {
   constructor(page: Page) {
     super(page);
     this.continueFromLoginButton = this.testId('proceed-2');
+    // Step 2 of the checkout wizard shows the login form for a guest.
+    this.signInEmailInput = this.testId('email');
+    this.signInPasswordInput = this.testId('password');
+    this.signInSubmitButton = this.testId('login-submit');
     this.streetInput = this.testId('street');
     this.postalCodeInput = this.testId('postal_code');
     this.houseNumberInput = this.testId('house_number');
@@ -35,6 +42,19 @@ export class CheckoutPage extends BasePage {
     this.orderConfirmation = this.page.locator('#order-confirmation');
   }
 
+  /**
+   * Sign in inside the checkout wizard (step 2) instead of on /auth/login.
+   * The whole purchase then happens inside the single-page app without a full
+   * page reload after login.
+   */
+  async signInAtCheckout(customer: CustomerCredentials): Promise<void> {
+    await expect(this.signInSubmitButton).toBeVisible();
+    await this.signInEmailInput.fill(customer.email);
+    await this.signInPasswordInput.fill(customer.password);
+    await this.signInSubmitButton.click();
+    await expect(this.continueFromLoginButton).toBeVisible();
+  }
+
   async continueFromLoginStep(): Promise<void> {
     await expect(this.continueFromLoginButton).toBeVisible();
     await this.continueFromLoginButton.click();
@@ -42,25 +62,63 @@ export class CheckoutPage extends BasePage {
 
   async fillBillingAddress(address: BillingAddress): Promise<void> {
     await expect(this.streetInput).toBeVisible();
-    await this.countrySelect.selectOption({ value: address.countryCode });
-    await this.postalCodeInput.fill(address.postalCode);
 
-    const lookupResponse = this.page.waitForResponse(
-      response => response.url().includes('/postcode-lookup')
-        && response.request().method() === 'GET',
-      { timeout: 15_000 },
-    );
-    await this.houseNumberInput.fill(address.houseNumber);
-    await lookupResponse;
-    await expect(this.postcodeLookupLoading).toBeHidden();
+    // The form calls /postcode-lookup (debounced, sometimes twice) while the
+    // postal code and house number are typed. A late response rewrites the
+    // address and can clear the house number, so track the lookups and only
+    // continue once they have settled.
+    const lookups = this.trackPostcodeLookups();
+    try {
+      await this.countrySelect.selectOption({ value: address.countryCode });
+      await this.postalCodeInput.fill(address.postalCode);
+      await this.houseNumberInput.fill(address.houseNumber);
 
-    // Keep the street/city/state that the postcode lookup filled in. The API now
-    // validates the invoice address against that lookup (422 "The city does not
-    // belong to the selected country" otherwise), so overwriting them breaks checkout.
-    // Fall back to the test data only if the lookup left a field empty.
-    await this.fillIfEmpty(this.streetInput, address.street);
-    await this.fillIfEmpty(this.cityInput, address.city);
-    await this.fillIfEmpty(this.stateInput, address.state);
+      // Street/city/state must come from the lookup: the API validates the
+      // invoice address against it (422 "The city does not belong to the
+      // selected country" for any other value), so the test never types its
+      // own values there and waits for the site to fill them. Only the house
+      // number, which a late lookup can clear, is typed again.
+      await expect(async () => {
+        expect(lookups.settled(), 'postcode lookup still running').toBe(true);
+        await this.fillIfEmpty(this.houseNumberInput, address.houseNumber);
+        for (const lookupField of [this.streetInput, this.cityInput, this.stateInput]) {
+          await expect(lookupField).not.toHaveValue('', { timeout: 1_000 });
+        }
+        await expect(this.postcodeLookupLoading).toBeHidden({ timeout: 1_000 });
+        await expect(this.continueToPaymentButton).toBeEnabled({ timeout: 1_000 });
+        expect(lookups.settled(), 'a new postcode lookup started').toBe(true);
+      }).toPass({ timeout: 20_000 });
+    } finally {
+      lookups.stop();
+    }
+  }
+
+  /**
+   * Count /postcode-lookup requests. "Settled" = none in flight and none sent
+   * or finished during the last second (covers the form's debounce).
+   */
+  private trackPostcodeLookups(): { settled: () => boolean; stop: () => void } {
+    const quietPeriodMs = 1_000;
+    let inFlight = 0;
+    let lastActivity = Date.now();
+    const isLookup = (url: string) => url.includes('/postcode-lookup');
+    const onRequest = (request: { url(): string }) => {
+      if (isLookup(request.url())) { inFlight += 1; lastActivity = Date.now(); }
+    };
+    const onDone = (request: { url(): string }) => {
+      if (isLookup(request.url())) { inFlight = Math.max(0, inFlight - 1); lastActivity = Date.now(); }
+    };
+    this.page.on('request', onRequest);
+    this.page.on('requestfinished', onDone);
+    this.page.on('requestfailed', onDone);
+    return {
+      settled: () => inFlight === 0 && Date.now() - lastActivity >= quietPeriodMs,
+      stop: () => {
+        this.page.off('request', onRequest);
+        this.page.off('requestfinished', onDone);
+        this.page.off('requestfailed', onDone);
+      },
+    };
   }
 
   private async fillIfEmpty(input: Locator, value: string): Promise<void> {
